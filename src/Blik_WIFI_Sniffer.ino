@@ -42,8 +42,8 @@ MEMS_I2C *mems = 0;
 
 // internal declarations
 uint8_t level = 0, channel = 1;
-int channels[] = {1, 6, 11, 99}; // all required channels. 99 is a marker for restart
-// int channels[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 99}; // all required channels
+// int channels[] = {1, 6, 11, 99}; // all required channels. 99 is a marker for restart
+int channels[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 99}; // all required channels
 int *curChannel;
 File myFile;
 String json;
@@ -123,53 +123,60 @@ void wifi_sniffer_packet(void *buff, wifi_promiscuous_pkt_type_t type)
   // create an entity so it's easier to manipulate only if it's in the desired range
   Entity entity = Entity(ppkt->rx_ctrl.channel, ppkt->rx_ctrl.rssi, buildString(hdr->addr2, HEX));
   // scan one channel, create JSON and flush
-  appendToMap(entity);
-
-  printMac(ppkt->rx_ctrl.channel, ppkt->rx_ctrl.rssi, hdr->addr2);
+  if (appendToMap(entity))
+  {
+    printMac(ppkt->rx_ctrl.channel, ppkt->rx_ctrl.rssi, hdr->addr2);
+  }
 }
 
-void appendToMap(Entity entity)
+bool appendToMap(Entity entity)
 {
+  bool result = false;
   if (entitiesByMac.find(entity.getMAC()) == entitiesByMac.end())
   {
     // MAC doesn't exist, inserting
     Serial.println("New MAC found, inserting");
     entitiesByMac.insert({entity.getMAC(), entity});
     Serial.println("New size:" + String(entitiesByMac.size()));
+    result = true;
   }
-  else
-  {
-    Serial.println("Existing MAC found, skipping");
-  }
+  // else
+  // {
+  //   Serial.println("Existing MAC found, skipping");
+  // }
+  return result;
 }
 
 void jsonToSD()
 {
-  Serial.println("Flushing channel to SD");
   createJSON();
   entitiesByMac.clear();
 }
 
 void createJSON()
 {
-  const size_t capacity = JSON_ARRAY_SIZE(MAXMACHOLDERSIZE) + MAXMACHOLDERSIZE * JSON_OBJECT_SIZE(4);
-  DynamicJsonDocument doc(capacity);
-
-  auto it = entitiesByMac.begin();
-  while (it != entitiesByMac.end())
+  if (!entitiesByMac.empty())
   {
-    JsonObject nestedDoc = doc.createNestedObject();
-    nestedDoc["mac"] = it->second.getMAC();
-    nestedDoc["rssi"] = it->second.getRSSI();
-    nestedDoc["ch"] = it->second.getCH();
+    Serial.println("Flushing channel to SD");
+    const size_t capacity = JSON_ARRAY_SIZE(MAXMACHOLDERSIZE) + MAXMACHOLDERSIZE * JSON_OBJECT_SIZE(4);
+    DynamicJsonDocument doc(capacity);
 
-    Serial.println(it->second.getMAC() + " Added to JSON ");
-    it++;
+    auto it = entitiesByMac.begin();
+    while (it != entitiesByMac.end())
+    {
+      JsonObject nestedDoc = doc.createNestedObject();
+      nestedDoc["mac"] = it->second.getMAC();
+      nestedDoc["rssi"] = it->second.getRSSI();
+      nestedDoc["ch"] = it->second.getCH();
+
+      Serial.println(it->second.getMAC() + " Added to JSON ");
+      it++;
+    }
+    myFile = SD.open("/test.json", FILE_APPEND);
+    serializeJson(doc, myFile);
+    serializeJson(doc, Serial);
+    Serial.println();
   }
-  myFile = SD.open("/test.json", FILE_APPEND);
-  serializeJson(doc, myFile);
-  serializeJson(doc, Serial);
-  Serial.println();
 }
 
 bool waitMotion(long timeout)
@@ -242,8 +249,8 @@ String buildString(const uint8_t addr[], unsigned char decimalPlaces)
 void initializeFreematics()
 {
   initializeSD();
-  initializeMEMS();
-  initializeOBD();
+  // initializeMEMS();
+  // initializeOBD();
 }
 
 void initializeOBD()
@@ -315,14 +322,14 @@ void loop()
   // vTaskDelay(WIFI_CHANNEL_SWITCH_INTERVAL / portTICK_PERIOD_MS);
   wifi_sniffer_set_channel(*curChannel);
   jsonToSD();
-  if (waitMotion(1000))
-  {
-    Serial.println("++++++++++++++++++++++++++MOTION DETECTED");
-  }
-  else
-  {
-    Serial.println("NO MOTION DETECTED");
-  }
+  // if (waitMotion(1000))
+  // {
+  //   Serial.println("++++++++++++++++++++++++++MOTION DETECTED");
+  // }
+  // else
+  // {
+  //   Serial.println("NO MOTION DETECTED");
+  // }
 
   delay(1000); // wait for a second
   curChannel++;
